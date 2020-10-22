@@ -11,25 +11,26 @@
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
 
-#define CMDBUF_SIZE	80	// enough for one VGA text line
+#define CMDBUF_SIZE 80 // enough for one VGA text line
+#define FUNCTION_NAME_LEN 64
 
-
-struct Command {
+struct Command
+{
 	const char *name;
 	const char *desc;
 	// return -1 to force monitor to exit
-	int (*func)(int argc, char** argv, struct Trapframe* tf);
+	int (*func)(int argc, char **argv, struct Trapframe *tf);
 };
 
 static struct Command commands[] = {
-	{ "help", "Display this list of commands", mon_help },
-	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{"help", "Display this list of commands", mon_help},
+	{"kerninfo", "Display information about the kernel", mon_kerninfo},
+	{"backtrace", "Display current backtrace", mon_backtrace},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
 
-int
-mon_help(int argc, char **argv, struct Trapframe *tf)
+int mon_help(int argc, char **argv, struct Trapframe *tf)
 {
 	int i;
 
@@ -38,8 +39,7 @@ mon_help(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
-int
-mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
+int mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 {
 	extern char _start[], entry[], etext[], edata[], end[];
 
@@ -50,18 +50,50 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 	cprintf("  edata  %08x (virt)  %08x (phys)\n", edata, edata - KERNBASE);
 	cprintf("  end    %08x (virt)  %08x (phys)\n", end, end - KERNBASE);
 	cprintf("Kernel executable memory footprint: %dKB\n",
-		ROUNDUP(end - entry, 1024) / 1024);
+			ROUNDUP(end - entry, 1024) / 1024);
 	return 0;
 }
 
-int
-mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+int mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	cprintf("Stack backtrace:\n");
+
+	uint32_t ebp = read_ebp();
+	while (ebp)
+	{
+		uint32_t *p = (uint32_t *)ebp + 2;
+		uint32_t eip = p[-1];
+		uint32_t ebp_prev = p[-2];
+
+		cprintf("  ebp %x  eip %x  args", ebp, eip);
+		for (int i = 0; i < 5; i++)
+		{
+			cprintf(" %08x", p[i]);
+		}
+		cprintf("\n");
+
+		struct Eipdebuginfo debuginfo;
+		debuginfo_eip(eip, &debuginfo);
+
+		// char fn_name[FUNCTION_NAME_LEN];
+		// if (debuginfo.eip_fn_namelen >= FUNCTION_NAME_LEN)
+		// {
+		// 	panic("function name too long");
+		// }
+
+		// strlcpy(fn_name, debuginfo.eip_fn_name, debuginfo.eip_fn_namelen + 1);
+
+		cprintf("        %s:%d: %.*s+%d\n",
+				debuginfo.eip_file,
+				debuginfo.eip_line,
+				debuginfo.eip_fn_namelen, debuginfo.eip_fn_name,
+				(int)(eip - debuginfo.eip_fn_addr));
+
+		ebp = ebp_prev;
+	}
+
 	return 0;
 }
-
-
 
 /***** Kernel monitor command interpreter *****/
 
@@ -78,7 +110,8 @@ runcmd(char *buf, struct Trapframe *tf)
 	// Parse the command buffer into whitespace-separated arguments
 	argc = 0;
 	argv[argc] = 0;
-	while (1) {
+	while (1)
+	{
 		// gobble whitespace
 		while (*buf && strchr(WHITESPACE, *buf))
 			*buf++ = 0;
@@ -86,7 +119,8 @@ runcmd(char *buf, struct Trapframe *tf)
 			break;
 
 		// save and scan past next arg
-		if (argc == MAXARGS-1) {
+		if (argc == MAXARGS - 1)
+		{
 			cprintf("Too many arguments (max %d)\n", MAXARGS);
 			return 0;
 		}
@@ -99,7 +133,8 @@ runcmd(char *buf, struct Trapframe *tf)
 	// Lookup and invoke the command
 	if (argc == 0)
 		return 0;
-	for (i = 0; i < ARRAY_SIZE(commands); i++) {
+	for (i = 0; i < ARRAY_SIZE(commands); i++)
+	{
 		if (strcmp(argv[0], commands[i].name) == 0)
 			return commands[i].func(argc, argv, tf);
 	}
@@ -107,16 +142,15 @@ runcmd(char *buf, struct Trapframe *tf)
 	return 0;
 }
 
-void
-monitor(struct Trapframe *tf)
+void monitor(struct Trapframe *tf)
 {
 	char *buf;
 
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
 
-
-	while (1) {
+	while (1)
+	{
 		buf = readline("K> ");
 		if (buf != NULL)
 			if (runcmd(buf, tf) < 0)
