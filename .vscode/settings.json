@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.S": "asm",
+        "monitor.h": "c",
+        "string.h": "c",
+        "stdio.h": "c"
+    }
+}
