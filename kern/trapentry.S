@@ -21,10 +21,10 @@
  * where NAME is the argument passed to TRAPHANDLER.
  */
 #define TRAPHANDLER(name, num)						\
-	.globl name;		/* define global symbol for 'name' */	\
-	.type name, @function;	/* symbol type is function */		\
+	.globl handler_##name;		/* define global symbol for 'name' */	\
+	.type handler_##name, @function;	/* symbol type is function */		\
 	.align 2;		/* align function definition */		\
-	name:			/* function starts here */		\
+	handler_##name:			/* function starts here */		\
 	pushl $(num);							\
 	jmp _alltraps
 
@@ -33,10 +33,10 @@
  * format in either case.
  */
 #define TRAPHANDLER_NOEC(name, num)					\
-	.globl name;							\
-	.type name, @function;						\
+	.globl handler_##name;							\
+	.type handler_##name, @function;						\
 	.align 2;							\
-	name:								\
+	handler_##name:								\
 	pushl $0;							\
 	pushl $(num);							\
 	jmp _alltraps
@@ -46,10 +46,34 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
-
-
+TRAPHANDLER_NOEC(divbyzero, 0);
+TRAPHANDLER_NOEC(debug, 1);
+TRAPHANDLER_NOEC(nonmaskable, 2);
+TRAPHANDLER_NOEC(breakpoint, 3);
+TRAPHANDLER_NOEC(overflow, 4);
+TRAPHANDLER_NOEC(boundrange, 5);
+TRAPHANDLER_NOEC(invalidop, 6);
+TRAPHANDLER_NOEC(devnotavail, 7);
+TRAPHANDLER(doublefault, 8);
+TRAPHANDLER(invalidtss, 10);
+TRAPHANDLER(segnotpresent, 11);
+TRAPHANDLER(stackseg, 12);
+TRAPHANDLER(generalprot, 13);
+TRAPHANDLER(pagefault, 14);
+TRAPHANDLER_NOEC(x87fp, 16);
+TRAPHANDLER(alignck, 17);
+TRAPHANDLER_NOEC(machineck, 18);
+TRAPHANDLER_NOEC(simdfp, 19);
 
 /*
  * Lab 3: Your code here for _alltraps
  */
-
+ _alltraps:
+	pushl %ds
+	pushl %es
+	pushal
+	movw $GD_KD, %ax
+	movw %ax, %ds
+	movw %ax, %es
+	pushl %esp
+	call trap

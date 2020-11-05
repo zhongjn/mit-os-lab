@@ -511,24 +511,26 @@ void env_run(struct Env *e)
 	//	   registers and drop into user mode in the
 	//	   environment.
 
-	assert(e->env_status == ENV_RUNNABLE);
-
-	if (curenv)
+	if (curenv != e)
 	{
-		if (curenv->env_status == ENV_RUNNING)
+		assert(e->env_status == ENV_RUNNABLE);
+		if (curenv)
 		{
-			curenv->env_status = ENV_RUNNABLE;
+			if (curenv->env_status == ENV_RUNNING)
+			{
+				curenv->env_status = ENV_RUNNABLE;
+			}
+			else
+			{
+				panic("what status?");
+			}
 		}
-		else
-		{
-			panic("what status?");
-		}
-	}
 
-	curenv = e;
-	e->env_status = ENV_RUNNING;
-	e->env_runs++;
-	lcr3(PADDR(e->env_pgdir));
+		curenv = e;
+		e->env_status = ENV_RUNNING;
+		e->env_runs++;
+		lcr3(PADDR(e->env_pgdir));
+	}
 
 	// Hint: This function loads the new environment's state from
 	//	e->env_tf.  Go back through the code you wrote above
