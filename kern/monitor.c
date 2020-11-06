@@ -27,6 +27,8 @@ static struct Command commands[] = {
 	{"help", "Display this list of commands", mon_help},
 	{"kerninfo", "Display information about the kernel", mon_kerninfo},
 	{"backtrace", "Display current backtrace", mon_backtrace},
+	{"step", "Step single instruction", mon_step},
+	{"cont", "Continue execution", mon_cont},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -88,6 +90,19 @@ int mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
+int mon_step(int argc, char **argv, struct Trapframe *tf)
+{
+	assert(tf);
+	tf->tf_eflags |= FL_TF;
+	return -1;
+}
+
+int mon_cont(int argc, char **argv, struct Trapframe *tf)
+{
+	assert(tf);
+	return -1;
+}
+
 /***** Kernel monitor command interpreter *****/
 
 #define WHITESPACE "\t\r\n "
@@ -145,7 +160,8 @@ void monitor(struct Trapframe *tf)
 	if (tf != NULL)
 		print_trapframe(tf);
 
-	while (1) {
+	while (1)
+	{
 		buf = readline("K> ");
 		if (buf != NULL)
 			if (runcmd(buf, tf) < 0)

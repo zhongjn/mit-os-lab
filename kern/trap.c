@@ -81,7 +81,7 @@ void trap_init(void)
     void handler_syscall();
 
     SETGATE(idt[0], 1, GD_KT, handler_divbyzero, 0);
-    SETGATE(idt[1], 1, GD_KT, handler_debug, 0);
+    SETGATE(idt[1], 1, GD_KT, handler_debug, 3);
     SETGATE(idt[2], 0, GD_KT, handler_nonmaskable, 0);
     SETGATE(idt[3], 1, GD_KT, handler_breakpoint, 3);
     SETGATE(idt[4], 1, GD_KT, handler_overflow, 0);
@@ -183,6 +183,7 @@ trap_dispatch(struct Trapframe *tf)
 
     switch (tf->tf_trapno)
     {
+    case T_DEBUG:
     case T_BRKPT:
         monitor(tf);
         return;
@@ -222,6 +223,9 @@ void trap(struct Trapframe *tf)
     // fails, DO NOT be tempted to fix it by inserting a "cli" in
     // the interrupt path.
     assert(!(read_eflags() & FL_IF));
+
+    // Clear single step flag
+    tf->tf_eflags &= ~FL_TF;
 
     cprintf("Incoming TRAP frame at %p\n", tf);
 
