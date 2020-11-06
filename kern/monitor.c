@@ -66,23 +66,15 @@ int mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 		uint32_t eip = p[-1];
 		uint32_t ebp_prev = p[-2];
 
+		struct Eipdebuginfo debuginfo;
+		debuginfo_eip(eip, &debuginfo);
+
 		cprintf("  ebp %x  eip %x  args", ebp, eip);
 		for (int i = 0; i < 5; i++)
 		{
 			cprintf(" %08x", p[i]);
 		}
 		cprintf("\n");
-
-		struct Eipdebuginfo debuginfo;
-		debuginfo_eip(eip, &debuginfo);
-
-		// char fn_name[FUNCTION_NAME_LEN];
-		// if (debuginfo.eip_fn_namelen >= FUNCTION_NAME_LEN)
-		// {
-		// 	panic("function name too long");
-		// }
-
-		// strlcpy(fn_name, debuginfo.eip_fn_name, debuginfo.eip_fn_namelen + 1);
 
 		cprintf("        %s:%d: %.*s+%d\n",
 				debuginfo.eip_file,

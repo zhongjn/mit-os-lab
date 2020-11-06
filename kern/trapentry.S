@@ -65,6 +65,8 @@ TRAPHANDLER(alignck, 17);
 TRAPHANDLER_NOEC(machineck, 18);
 TRAPHANDLER_NOEC(simdfp, 19);
 
+TRAPHANDLER_NOEC(syscall, T_SYSCALL);
+
 /*
  * Lab 3: Your code here for _alltraps
  */
