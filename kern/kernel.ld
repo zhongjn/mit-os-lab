@@ -52,9 +52,9 @@ SECTIONS
 		*(.dynbss)
 		*(.bss .bss.*)
 		*(COMMON)
-		PROVIDE(end = .);
 	}
 
+	PROVIDE(end = .);
 
 	/DISCARD/ : {
 		*(.eh_frame .note.GNU-stack .comment .note)
