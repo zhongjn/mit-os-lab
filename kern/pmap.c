@@ -271,7 +271,11 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
-
+	for (int i = 0; i < NCPU; i++)
+	{
+		uintptr_t kstacktop_i = KSTACKTOP - i * (KSTKSIZE + KSTKGAP);
+		boot_map_region(kern_pgdir, kstacktop_i - KSTKSIZE, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+	}
 }
 
 // --------------------------------------------------------------
@@ -315,14 +319,17 @@ page_init(void)
 	// 1）第一个物理页是IDT所在，需要标识为已用
 	// 2）[IOPHYSMEM, EXTPHYSMEM)称为IO hole的区域，需要标识为已用。
 	// 3）EXTPHYSMEM是内核加载的起始位置，终止位置可以由boot_alloc(0)给出（理由是boot_alloc()分配的内存是内核的最尾部），这块区域也要标识
+	// 4）多处理器入口代码页
 	size_t i;
 	size_t io_hole_start_page = (size_t)IOPHYSMEM / PGSIZE;
 	size_t kernel_end_page = PADDR(boot_alloc(0)) / PGSIZE;		//这里调了半天，boot_alloc返回的是虚拟地址，需要转为物理地址
+	size_t mpentry_page = MPENTRY_PADDR / PGSIZE;
 	for (i = 0; i < npages; i++) {
-		if (i == 0) {
-			pages[i].pp_ref = 1;
-			pages[i].pp_link = NULL;
-		} else if (i >= io_hole_start_page && i < kernel_end_page) {
+		int in_use = 0;
+		in_use |= i == 0;
+		in_use |= i == mpentry_page;
+		in_use |= i >= io_hole_start_page && i < kernel_end_page;
+		if (in_use) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 		} else {
@@ -611,7 +618,17 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+
+	assert(pa % PGSIZE == 0);
+
+	size = ROUNDUP(size, PGSIZE);
+	uintptr_t end = base + size;
+	if (end > MMIOLIM)
+		panic("out of MMIO space");
+	boot_map_region(kern_pgdir, base, size, pa, PTE_PCD | PTE_PWT | PTE_W);
+	void* result = (void*)base;
+	base = end;
+	return result;
 }
 
 static uintptr_t user_mem_check_addr;
@@ -638,7 +655,6 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
-	cprintf("user_mem_check va: %x, len: %x\n", va, len);
 	uint32_t begin = (uint32_t) ROUNDDOWN(va, PGSIZE); 
 	uint32_t end = (uint32_t) ROUNDUP(va+len, PGSIZE);
 	uint32_t i;
@@ -649,7 +665,6 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 			return -E_FAULT;
 		}
 	}
-	cprintf("user_mem_check success va: %x, len: %x\n", va, len);
 	return 0;
 }
 

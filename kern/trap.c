@@ -14,7 +14,7 @@
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
 
-static struct Taskstate ts;
+// static struct Taskstate ts;
 
 /* For debugging, so print_trapframe can distinguish between printing
  * a saved trapframe and printing the current trapframe and print some
@@ -138,21 +138,21 @@ trap_init_percpu(void)
 	// user space on that CPU.
 	//
 	// LAB 4: Your code here:
+	struct CpuInfo* cpu = thiscpu;
+	cpu->cpu_ts.ts_esp0 = KSTACKTOP - cpu->cpu_id * (KSTKSIZE + KSTKGAP);
+	cpu->cpu_ts.ts_ss0 = GD_KD;
+	cpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
 
-	// Setup a TSS so that we get the right stack
-	// when we trap to the kernel.
-	ts.ts_esp0 = KSTACKTOP;
-	ts.ts_ss0 = GD_KD;
-	ts.ts_iomb = sizeof(struct Taskstate);
+	int tss_sel = GD_TSS0 + cpu->cpu_id;
 
 	// Initialize the TSS slot of the gdt.
-	gdt[GD_TSS0 >> 3] = SEG16(STS_T32A, (uint32_t) (&ts),
+	gdt[tss_sel >> 3] = SEG16(STS_T32A, (uint32_t) (&cpu->cpu_ts),
 					sizeof(struct Taskstate) - 1, 0);
-	gdt[GD_TSS0 >> 3].sd_s = 0;
+	gdt[tss_sel >> 3].sd_s = 0;
 
 	// Load the TSS selector (like other segment selectors, the
 	// bottom three bits are special; we leave them 0)
-	ltr(GD_TSS0);
+	ltr(tss_sel);
 
 	// Load the IDT
 	lidt(&idt_pd);
@@ -274,6 +274,7 @@ trap(struct Trapframe *tf)
 		// serious kernel work.
 		// LAB 4: Your code here.
 		assert(curenv);
+		lock_kernel();
 
 		// Garbage collect if current enviroment is a zombie
 		if (curenv->env_status == ENV_DYING) {
@@ -319,7 +320,10 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 3: Your code here.
 	if ((tf->tf_cs & 3) == 0)
+	{
+		print_trapframe(tf);
 		panic("page_fault_handler():page fault in kernel mode!\n");
+	}
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.

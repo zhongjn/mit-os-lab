@@ -59,20 +59,34 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
-	uint32_t *ebp = (uint32_t *)read_ebp();
-	struct Eipdebuginfo eipdebuginfo;
-	while (ebp != 0) {
-		//打印ebp, eip, 最近的五个参数
-		uint32_t eip = *(ebp + 1);
-		cprintf("ebp %08x eip %08x args %08x %08x %08x %08x %08x\n", ebp, eip, *(ebp + 2), *(ebp + 3), *(ebp + 4), *(ebp + 5), *(ebp + 6));
-		//打印文件名等信息
-		debuginfo_eip((uintptr_t)eip, &eipdebuginfo);
-		cprintf("%s:%d", eipdebuginfo.eip_file, eipdebuginfo.eip_line);
-		cprintf(": %.*s+%d\n", eipdebuginfo.eip_fn_namelen, eipdebuginfo.eip_fn_name, eipdebuginfo.eip_fn_addr);
-		//更新ebp
-		ebp = (uint32_t *)(*ebp);
+	cprintf("Stack backtrace:\n");
+
+	uint32_t ebp = read_ebp();
+	while (ebp)
+	{
+		uint32_t *p = (uint32_t *)ebp + 2;
+		uint32_t eip = p[-1];
+		uint32_t ebp_prev = p[-2];
+
+		cprintf("  ebp %x  eip %x  args", ebp, eip);
+		for (int i = 0; i < 5; i++)
+		{
+			cprintf(" %08x", p[i]);
+		}
+		cprintf("\n");
+
+		struct Eipdebuginfo debuginfo;
+		debuginfo_eip(eip, &debuginfo);
+
+		cprintf("        %s:%d: %.*s+%d\n",
+				debuginfo.eip_file,
+				debuginfo.eip_line,
+				debuginfo.eip_fn_namelen, debuginfo.eip_fn_name,
+				(int)(eip - debuginfo.eip_fn_addr));
+
+		ebp = ebp_prev;
 	}
+
 	return 0;
 }
 
