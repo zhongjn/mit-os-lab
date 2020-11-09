@@ -52,6 +52,7 @@ SECTIONS
 		*(.dynbss)
 		*(.bss .bss.*)
 		*(COMMON)
+		BYTE(0)
 	}
 
 	PROVIDE(end = .);
