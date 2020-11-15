@@ -1,5 +1,7 @@
 // implement fork from user space
 
+#include "inc/assert.h"
+#include "inc/mmu.h"
 #include <inc/string.h>
 #include <inc/lib.h>
 
@@ -25,6 +27,11 @@ pgfault(struct UTrapframe *utf)
 	//   (see <inc/memlayout.h>).
 
 	// LAB 4: Your code here.
+	pte_t pte = uvpt[PGNUM(addr)];
+	if (!((err & FEC_WR) && (pte & PTE_COW)))
+	{
+		panic("not cow page fault!");
+	}
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
@@ -33,8 +40,11 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
-
-	panic("pgfault not implemented");
+	uintptr_t cowpg_addr = ROUNDDOWN((uintptr_t)addr, PGSIZE);
+	sys_page_alloc(0, PFTEMP, PTE_P | PTE_U | PTE_W);
+	memcpy((void*)PFTEMP, (void*)cowpg_addr, PGSIZE);
+	sys_page_map(0, (void*)PFTEMP, 0, (void*)cowpg_addr, PTE_U | PTE_P | PTE_W);
+	sys_page_unmap(0, (void*)PFTEMP);
 }
 
 //
@@ -54,7 +64,17 @@ duppage(envid_t envid, unsigned pn)
 	int r;
 
 	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	uintptr_t addr = pn * PGSIZE;
+	pte_t pte = uvpt[pn];
+	if ((pte & PTE_W) || (pte & PTE_COW))
+	{
+		sys_page_map(0, (void*)addr, envid, (void*)addr, PTE_P | PTE_U | PTE_COW);
+		sys_page_map(0, (void*)addr, 0, (void*)addr, PTE_P | PTE_U | PTE_COW);
+	}
+	else {
+		sys_page_map(0, (void*)addr, envid, (void*)addr, PTE_P | PTE_U);
+	}
+
 	return 0;
 }
 
@@ -78,7 +98,55 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
-	panic("fork not implemented");
+
+	// set parent fault handler
+	set_pgfault_handler(pgfault);
+
+	// create child env
+	envid_t child_envid = sys_exofork();
+
+	if (child_envid == 0)
+	{
+		// child
+		envid_t envid = sys_getenvid();
+		thisenv = envs + ENVX(envid);
+		return 0;
+	}
+
+	// set child fault upcall (handler would be set with memory copy)
+	extern void _pgfault_upcall(void);
+	sys_env_set_pgfault_upcall(child_envid, _pgfault_upcall);
+
+	// duplicate all presenting page
+	for (int pdx = 0; pdx < PDX(UTOP); pdx++)
+	{
+		pde_t pde = uvpd[pdx];
+		if (pde & PTE_P)
+		{
+			for (int ptx = 0; ptx < NPTENTRIES; ptx++)
+			{
+				void* addr = PGADDR(pdx, ptx, 0);
+
+				// don't duplicate the exception stack!
+				if (addr == (void*)(UXSTACKTOP - PGSIZE)) continue;
+
+				int pn = PGNUM(addr);
+				pte_t pte = uvpt[pn];
+				if (pte & PTE_P)
+				{
+					duppage(child_envid, pn);
+				}
+			}
+		}
+	}
+
+	// special handle the exception stack
+	sys_page_alloc(child_envid, (void*)(UXSTACKTOP - PGSIZE), PTE_U | PTE_P | PTE_W);
+
+	// child env ready to run
+	sys_env_set_status(child_envid, ENV_RUNNABLE);
+
+	return child_envid;
 }
 
 // Challenge!

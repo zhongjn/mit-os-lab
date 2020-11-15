@@ -148,6 +148,18 @@ sys_env_set_pgfault_upcall(envid_t envid, void *func)
 	return 0;
 }
 
+static int
+user_page_perm_check(int perm)
+{
+	if (!(perm & (PTE_U | PTE_P)))
+		return -E_INVAL;
+
+	if (perm & ~PTE_SYSCALL)
+		return -E_INVAL;
+
+	return 0;
+}
+
 // Allocate a page of memory and map it at 'va' with permission
 // 'perm' in the address space of 'envid'.
 // The page's contents are set to 0.
@@ -186,11 +198,9 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	if (vaddr % PGSIZE != 0 || vaddr >= UTOP)
 		return -E_INVAL;
 
-	if (!(perm & (PTE_U | PTE_P)))
-		return -E_INVAL;
-
-	if (perm & ~PTE_SYSCALL)
-		return -E_INVAL;
+	err = user_page_perm_check(perm);
+	if (err)
+		return err;
 
 	struct PageInfo* pp = page_alloc(ALLOC_ZERO);
 	if (!pp)
@@ -251,11 +261,9 @@ sys_page_map(envid_t srcenvid, void *srcva,
 		dst_vaddr >= UTOP || dst_vaddr % PGSIZE != 0)
 		return -E_INVAL;
 
-	if (!(perm & (PTE_U | PTE_P)))
-		return -E_INVAL;
-
-	if (perm & ~PTE_SYSCALL)
-		return -E_INVAL;
+	err = user_page_perm_check(perm);
+	if (err)
+		return err;
 
 	pte_t* src_pte;
 	struct PageInfo* src_pp = page_lookup(src_env->env_pgdir, srcva, &src_pte);
@@ -342,7 +350,53 @@ static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	int err;
+	struct Env* cur_env = curenv;
+	struct Env* target_env;
+	err = envid2env(envid, &target_env, 0);
+	if (err) return err;
+
+	if (!target_env->env_ipc_recving) return -E_IPC_NOT_RECV;
+
+	uintptr_t src_addr = (uintptr_t)srcva;
+	uintptr_t dst_addr = (uintptr_t)target_env->env_ipc_dstva;
+	int page_sent = 0;
+
+	// willing to send a page?
+	if (src_addr < UTOP)
+	{
+		// check page aligned
+		if (src_addr % PGSIZE != 0) return -E_INVAL;
+
+		// find page info in source env
+		pte_t* pte;
+		struct PageInfo *src_pp = page_lookup(cur_env->env_pgdir, srcva, &pte);
+		if (!src_pp) return -E_INVAL;
+
+		// check permission
+		err = user_page_perm_check(perm);
+		if (err) return err;
+
+		// check write permission
+		if ((perm & PTE_W) && !(*pte & PTE_W)) return -E_INVAL;
+
+		if (dst_addr < UTOP)
+		{
+			err = page_insert(target_env->env_pgdir, src_pp, target_env->env_ipc_dstva, perm);
+			if (err) return err;
+
+			target_env->env_ipc_perm = perm;
+			page_sent = 1;
+		}
+	}
+
+	target_env->env_ipc_recving = 0;
+	target_env->env_ipc_value = value;
+	target_env->env_ipc_from = cur_env->env_id;
+	target_env->env_status = ENV_RUNNABLE;
+	if (!page_sent)
+		target_env->env_ipc_perm = 0;
+	return 0;
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -360,7 +414,25 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	int err;
+	struct Env* cur_env = curenv;
+	assert(!cur_env->env_ipc_recving);
+
+	uintptr_t dst_addr = (uintptr_t)dstva;
+	if (dst_addr < UTOP)
+	{
+		// check page aligned
+		if (dst_addr % PGSIZE != 0) return -E_INVAL;
+	}
+
+	cur_env->env_ipc_recving = 1;
+	cur_env->env_ipc_dstva = dstva;
+	cur_env->env_tf.tf_regs.reg_eax = 0;
+	cur_env->env_status = ENV_NOT_RUNNABLE;
+
+	sched_yield();
+
+	// unreachable, make compiler happy
 	return 0;
 }
 
