@@ -47,10 +47,53 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+	TRAPHANDLER_NOEC(th0, 0)
+	TRAPHANDLER_NOEC(th1, 1)
+	TRAPHANDLER_NOEC(th3, 3)
+	TRAPHANDLER_NOEC(th4, 4)
+	TRAPHANDLER_NOEC(th5, 5)
+	TRAPHANDLER_NOEC(th6, 6)
+	TRAPHANDLER_NOEC(th7, 7)
+	TRAPHANDLER(th8, 8)
+	TRAPHANDLER_NOEC(th9, 9)
+	TRAPHANDLER(th10, 10)
+	TRAPHANDLER(th11, 11)
+	TRAPHANDLER(th12, 12)
+	TRAPHANDLER(th13, 13)
+	TRAPHANDLER(th14, 14)
+	TRAPHANDLER_NOEC(th16, 16)
 
+	TRAPHANDLER_NOEC(th_irq0, IRQ_OFFSET+0)
+	TRAPHANDLER_NOEC(th_irq1, IRQ_OFFSET+1)
+	TRAPHANDLER_NOEC(th_irq2, IRQ_OFFSET+2)
+	TRAPHANDLER_NOEC(th_irq3, IRQ_OFFSET+3)
+	TRAPHANDLER_NOEC(th_irq4, IRQ_OFFSET+4)
+	TRAPHANDLER_NOEC(th_irq5, IRQ_OFFSET+5)
+	TRAPHANDLER_NOEC(th_irq6, IRQ_OFFSET+6)
+	TRAPHANDLER_NOEC(th_irq7, IRQ_OFFSET+7)
+	TRAPHANDLER_NOEC(th_irq8, IRQ_OFFSET+8)
+	TRAPHANDLER_NOEC(th_irq9, IRQ_OFFSET+9)
+	TRAPHANDLER_NOEC(th_irq10, IRQ_OFFSET+10)
+	TRAPHANDLER_NOEC(th_irq11, IRQ_OFFSET+11)
+	TRAPHANDLER_NOEC(th_irq12, IRQ_OFFSET+12)
+	TRAPHANDLER_NOEC(th_irq13, IRQ_OFFSET+13)
+	TRAPHANDLER_NOEC(th_irq14, IRQ_OFFSET+14)
+	TRAPHANDLER_NOEC(th_irq15, IRQ_OFFSET+15)
 
+	TRAPHANDLER_NOEC(th_syscall, T_SYSCALL)
 
 /*
  * Lab 3: Your code here for _alltraps
  */
-
+	//参考inc/trap.h中的Trapframe结构。tf_ss，tf_esp，tf_eflags，tf_cs，tf_eip，tf_err由处理器压入，所以现在只需要压入剩下寄存器（%ds,%es,通用寄存器）
+	//切换到内核数据段
+	_alltraps:
+	pushl %ds
+	pushl %es
+	pushal
+	pushl $GD_KD
+	popl %ds
+	pushl $GD_KD
+	popl %es
+	pushl %esp				//压入trap()的参数tf，%esp指向Trapframe结构的起始地址
+	call trap
