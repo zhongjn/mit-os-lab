@@ -23,8 +23,20 @@ int32_t
 ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
 {
 	// LAB 4: Your code here.
-	panic("ipc_recv not implemented");
-	return 0;
+	uintptr_t addr = (uintptr_t)pg;
+	if (addr == 0)
+		addr = 0xFFFFFFFF; // any address higher than UTOP is fine
+
+	int err = sys_ipc_recv((void*)addr);
+	if (err) {
+		if (from_env_store) *from_env_store = 0;
+		if (perm_store) *perm_store = 0;
+		return err;
+	}
+
+	if (from_env_store) *from_env_store = thisenv->env_ipc_from;
+	if (perm_store) *perm_store = thisenv->env_ipc_perm;
+	return thisenv->env_ipc_value;
 }
 
 // Send 'val' (and 'pg' with 'perm', if 'pg' is nonnull) to 'toenv'.
@@ -39,7 +51,26 @@ void
 ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
 {
 	// LAB 4: Your code here.
-	panic("ipc_send not implemented");
+	uintptr_t addr = (uintptr_t)pg;
+	if (addr == 0)
+		addr = 0xFFFFFFFF;
+
+	while (1)
+	{
+		int err = sys_ipc_try_send(to_env, val, (void*)addr, perm);
+		if (err == 0)
+		{
+			break;
+		}
+		else if (err == -E_IPC_NOT_RECV)
+		{
+			sys_yield();
+			continue;
+		}
+		else {
+			panic("ipc send error: %e", err);
+		}
+	}
 }
 
 // Find the first environment of the given type.  We'll use this to
