@@ -19,6 +19,10 @@
         "ostream": "c",
         "sstream": "c",
         "streambuf": "c",
-        "system_error": "c"
+        "system_error": "c",
+        "algorithm": "c",
+        "fstream": "c",
+        "iosfwd": "c",
+        "iostream": "c"
     }
 }

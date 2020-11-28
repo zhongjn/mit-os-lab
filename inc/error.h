@@ -26,6 +26,10 @@ enum {
 	E_NOT_EXEC	,	// File not a valid executable
 	E_NOT_SUPP	,	// Operation not supported
 
+	// Network error codes
+	E_NET_TX_FULL,	// Transmission buffer full
+	E_NET_RX_EMPTY,	// Receive buffer empty
+
 	MAXERROR
 };
 

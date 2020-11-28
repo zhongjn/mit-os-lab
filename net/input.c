@@ -2,6 +2,8 @@
 
 extern union Nsipc nsipcbuf;
 
+static struct jif_pkt* pkt = (struct jif_pkt*)0x0ffff000;
+
 void
 input(envid_t ns_envid)
 {
@@ -13,4 +15,23 @@ input(envid_t ns_envid)
 	// Hint: When you IPC a page to the network server, it will be
 	// reading from it for a while, so don't immediately receive
 	// another packet in to the same physical page.
+	while (1) {
+		int r;
+
+		if ((r = sys_page_alloc(thisenv->env_id, pkt, PTE_U | PTE_P | PTE_W)) < 0)
+			panic("sys_page_alloc: %e", r);
+
+retry:
+		r = sys_net_recv(pkt->jp_data);
+		if (r == -E_NET_RX_EMPTY)
+			goto retry;
+		else if (r < 0)
+			panic("sys_net_recv: %e", r);
+		pkt->jp_len = r;
+
+		ipc_send(ns_envid, NSREQ_INPUT, pkt, PTE_U | PTE_P);
+
+		if ((r = sys_page_unmap(thisenv->env_id, pkt)) < 0)
+			panic("sys_page_unmap: %e", r);
+	}
 }

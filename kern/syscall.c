@@ -12,6 +12,7 @@
 #include <kern/console.h>
 #include <kern/sched.h>
 #include <kern/time.h>
+#include <kern/e1000.h>
 
 // Print a string to the system console.
 // The string is exactly 'len' characters long.
@@ -475,7 +476,35 @@ static int
 sys_time_msec(void)
 {
 	// LAB 6: Your code here.
-	panic("sys_time_msec not implemented");
+	return time_msec();
+}
+
+// Try to send a network packet
+// size cannot be larger than PACKET_BUFFER_SIZE
+static int
+sys_net_try_send(void* addr, size_t size)
+{
+	int r;
+	if (size > PACKET_BUFFER_SIZE)
+		return -E_INVAL;
+	if ((r = user_mem_check(curenv, addr, size, PTE_U)) < 0)
+		return -E_INVAL;
+	if ((r = e1000_try_send(addr, size)) < 0)
+		return r;
+	return 0;
+}
+
+// Receive a network packet
+// size of buf cannot be smaller than PACKET_BUFFER_SIZE
+// Return packet size (>0) on success
+static int
+sys_net_recv(void* buf)
+{
+	int r;
+	if ((r = user_mem_check(curenv, buf, PACKET_BUFFER_SIZE, PTE_U | PTE_W)))
+		return -E_INVAL;
+	// TODO: block
+	return e1000_recv(buf);
 }
 
 // Dispatches to the correct kernel function, passing the arguments.
@@ -528,6 +557,15 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 			break;
 		case SYS_ipc_recv:
 			ret = sys_ipc_recv((void*)a1);
+			break;
+		case SYS_time_msec:
+			ret = sys_time_msec();
+			break;
+		case SYS_net_try_send:
+			ret = sys_net_try_send((void*)a1, a2);
+			break;
+		case SYS_net_recv:
+			ret = sys_net_recv((void*)a1);
 			break;
 		default:
 			cprintf("invalid syscall number %d\n", syscallno);
