@@ -12,4 +12,7 @@ int e1000_attach(struct pci_func* pcif);
 int e1000_try_send(void* addr, size_t size);
 int e1000_recv(void* buf);
 
+extern int e1000_irq;
+void e1000_intr();
+
 #endif  // SOL >= 6

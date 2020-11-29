@@ -1,6 +1,8 @@
 #include <kern/e1000.h>
 #include <kern/pmap.h>
 #include <kern/pci.h>
+#include <kern/picirq.h>
+#include <kern/env.h>
 #include <inc/error.h>
 #include <inc/string.h>
 
@@ -13,22 +15,56 @@
 #define RX_RING_SIZE 128
 #define BITMASK_ACTUAL(mask,value) (value * ((mask) & ~((mask) << 1)))
 
-volatile uint32_t* e1000_bar0;
-struct e1000_tx_desc tx_ring[TX_RING_SIZE] __attribute__ ((aligned (16)));
-struct e1000_rx_desc rx_ring[RX_RING_SIZE] __attribute__ ((aligned (16)));
-uint8_t tx_buffer[TX_RING_SIZE][PACKET_BUFFER_SIZE];
-uint8_t rx_buffer[RX_RING_SIZE][PACKET_BUFFER_SIZE];
+static volatile uint32_t* e1000_bar0;
+static struct e1000_tx_desc tx_ring[TX_RING_SIZE] __attribute__ ((aligned (16)));
+static struct e1000_rx_desc rx_ring[RX_RING_SIZE] __attribute__ ((aligned (16)));
+static uint8_t tx_buffer[TX_RING_SIZE][PACKET_BUFFER_SIZE];
+static uint8_t rx_buffer[RX_RING_SIZE][PACKET_BUFFER_SIZE];
 
-int tdt;
-int rdt, rdh;
+static int tdt;
+static int rdt, rdh;
+int e1000_irq;
 
 static void init_tx_ring();
 static void init_rx_ring();
+
+void e1000_intr() {
+    uint32_t cause = E1000_REG(E1000_ICR);
+    cprintf(LOG_PREFIX "interrupt cause=0x%x\n", cause);
+
+    struct Env* cur_env = curenv;
+    struct Env* recv_env = NULL;
+    for (int i = 0; i < NENV; i++) {
+        if (envs[i].env_status != ENV_FREE && envs[i].env_net_recv.receiving) {
+            recv_env = &envs[i];
+            break;
+        }
+    }
+
+    if (recv_env) {
+        assert(recv_env->env_status == ENV_NOT_RUNNABLE);
+        int r;
+        if ((r = user_mem_check(recv_env, recv_env->env_net_recv.buf, PACKET_BUFFER_SIZE, PTE_U | PTE_W)) < 0)
+            goto ret;
+        uint32_t prev_pgdir = rcr3();
+        lcr3(PADDR(recv_env->env_pgdir));
+        r = e1000_recv(recv_env->env_net_recv.buf);
+        lcr3(prev_pgdir);
+ret:
+        recv_env->env_net_recv.receiving = false;
+        recv_env->env_net_recv.buf = NULL;
+        recv_env->env_tf.tf_regs.reg_eax = r;
+        recv_env->env_status = ENV_RUNNABLE;
+    }
+}
 
 int e1000_attach(struct pci_func* pcif) {
     pci_func_enable(pcif);
     e1000_bar0 = mmio_map_region(pcif->reg_base[0], pcif->reg_size[0]);
     cprintf(LOG_PREFIX "status=0x%08x\n", E1000_REG(E1000_STATUS));
+
+    e1000_irq = pcif->irq_line;
+	irq_setmask_8259A(irq_mask_8259A & ~(1<<e1000_irq));
 
     // init transmit descriptor array
     E1000_REG(E1000_TDBAH) = 0;
@@ -66,6 +102,10 @@ int e1000_attach(struct pci_func* pcif) {
     rdt = E1000_REG(E1000_RDT) = RX_RING_SIZE - 1;
 
     init_rx_ring();
+
+    // init receive time interrupt
+    E1000_REG(E1000_IMS) = E1000_IMS_RXT0 | E1000_IMS_RXO | E1000_IMS_RXDMT0 | E1000_IMS_RXSEQ | E1000_IMS_LSC;
+    E1000_REG(E1000_RDTR) = 0;
 
     // init receive control register
     E1000_REG(E1000_RCTL) = E1000_RCTL_EN | E1000_RCTL_SECRC | E1000_RCTL_SZ_2048 | E1000_RCTL_BAM;

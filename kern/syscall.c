@@ -484,10 +484,12 @@ sys_time_msec(void)
 static int
 sys_net_try_send(void* addr, size_t size)
 {
+	struct Env* cur_env = curenv;
+
 	int r;
 	if (size > PACKET_BUFFER_SIZE)
 		return -E_INVAL;
-	if ((r = user_mem_check(curenv, addr, size, PTE_U)) < 0)
+	if ((r = user_mem_check(cur_env, addr, size, PTE_U)) < 0)
 		return -E_INVAL;
 	if ((r = e1000_try_send(addr, size)) < 0)
 		return r;
@@ -500,11 +502,22 @@ sys_net_try_send(void* addr, size_t size)
 static int
 sys_net_recv(void* buf)
 {
+	struct Env* cur_env = curenv;
+
 	int r;
-	if ((r = user_mem_check(curenv, buf, PACKET_BUFFER_SIZE, PTE_U | PTE_W)))
+	if ((r = user_mem_check(cur_env, buf, PACKET_BUFFER_SIZE, PTE_U | PTE_W)) < 0)
 		return -E_INVAL;
-	// TODO: block
-	return e1000_recv(buf);
+	r = e1000_recv(buf);
+	if (r != -E_NET_RX_EMPTY)
+		return r;
+
+	// receive buffer empty
+	// block until interrupt
+	cur_env->env_net_recv.receiving = true;
+	cur_env->env_net_recv.buf = buf;
+	cur_env->env_status = ENV_NOT_RUNNABLE;
+
+	sched_yield();
 }
 
 // Dispatches to the correct kernel function, passing the arguments.

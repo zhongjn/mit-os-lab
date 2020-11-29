@@ -14,6 +14,7 @@
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
 #include <kern/time.h>
+#include <kern/e1000.h>
 
 // static struct Taskstate ts;
 
@@ -283,8 +284,6 @@ trap_dispatch(struct Trapframe *tf)
 		sched_yield();
 	}
 
-
-
 	// Handle keyboard and serial interrupts.
 	// LAB 5: Your code here.
 	if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
@@ -296,6 +295,13 @@ trap_dispatch(struct Trapframe *tf)
 	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
 		lapic_eoi();
 		serial_intr();
+		return;
+	}
+
+	if (tf->tf_trapno == IRQ_OFFSET + e1000_irq) {
+		e1000_intr();
+		irq_eoi();
+        lapic_eoi();
 		return;
 	}
 
